@@ -9,9 +9,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 app = FastAPI()
 
 def cargar_dataframes():
-    df_games = pd.read_parquet(r'D:\1er Proyecto\datasets_finales\games.parquet')
-    df_review = pd.read_parquet(r'D:\1er Proyecto\datasets_finales\reviews.parquet')
-    df_item = pd.read_parquet(r'D:\1er Proyecto\datasets_finales\user_items.parquet')
+    df_games = pd.read_parquet(r'datasets_finales/games.parquet')
+    df_review = pd.read_parquet(r'datasets_finales/reviews.parquet')
+    df_item = pd.read_parquet(r'datasets_finales/user_items.parquet')
     return df_games, df_review, df_item
 
 # Cargar los DataFrames y inicializar el modelo al inicio de la aplicación
