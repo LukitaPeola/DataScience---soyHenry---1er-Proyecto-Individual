@@ -184,15 +184,3 @@ def recomendacion_juego(product_id: int):
     }
 
     return resultado
-
-#print(developer('valve'))
-
-#print(userdata('imsodonionringsrightnow'))
-
-#print(UserForGenre('Indie'))
-
-#print(best_developer_year(2015))
-
-print(developer_reviews_analysis('valve'))
-
-#print(recomendacion_juego(99910))
