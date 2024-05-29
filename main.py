@@ -19,66 +19,47 @@ df_games, df_review, df_item = cargar_dataframes()
 
 @app.get("/developer/{empresa}")
 def developer(empresa: str):
-    df = df_games.copy()
-
     # Convertir el nombre de la empresa a minúsculas para hacer la búsqueda insensible a mayúsculas y minúsculas
     empresa = empresa.lower()
     
     # Filtrar el DataFrame por la empresa desarrolladora que contiene el nombre especificado
-    df_empresa = df[df['developer'].str.lower().str.contains(empresa)]
+    df_empresa = df_games[df_games['developer'].str.lower().str.contains(empresa)]
     
     # Verificar si hay datos para la empresa desarrolladora especificada
     if df_empresa.empty:
         return f"No hay datos disponibles para la empresa desarrolladora que contiene '{empresa}'."
         
-    # Agrupar por año
-    grouped = df_empresa.groupby('year')
-    
-    # Calcular cantidad de items y porcentaje de contenido Free por año
-    resultados = []
-    for year, group in grouped:
-        total_items = len(group)
-        free_items = len(group[group['price'] == 0])
-        porcentaje_free = (free_items / total_items) * 100 if total_items > 0 else 0
-        resultados.append({
-            'Año': year,
-            'Cantidad de Items': total_items,
-            'Porcentaje Free': porcentaje_free
-        })
+    # Agrupar por año y calcular cantidad de items y porcentaje de contenido Free por año
+    resultados = df_empresa.groupby('year').apply(lambda group: {
+        'Año': group.name,
+        'Cantidad de Items': len(group),
+        'Porcentaje Free': (group['price'].eq(0).mean() * 100).round(2)
+    }).tolist()
     
     # Ordenar los resultados por año
     resultados.sort(key=lambda x: x['Año'])
     
     # Construir el texto con los resultados año por año
-    texto = ""
-    for resultado in resultados:
-        texto += f"Año: {resultado['Año']}, Cantidad de Items: {resultado['Cantidad de Items']}, Porcentaje Free: {resultado['Porcentaje Free']:.2f}%\n"
+    texto = "\n".join([f"Año: {resultado['Año']}, Cantidad de Items: {resultado['Cantidad de Items']}, Porcentaje Free: {resultado['Porcentaje Free']}%" for resultado in resultados])
 
     return texto
 
+
 @app.get("/userdata/{id}")
 def userdata(user_name) -> dict:
-    items = df_item.copy()
-    games = df_games.copy()
-    reviews = df_review.copy()
+    # Filtrar solo los datos relevantes del DataFrame de items y reviews
+    user_items = df_item[df_item['user_id'] == str(user_name)]
+    user_reviews = df_review[df_review['user_id'] == str(user_name)]
 
-    #Identificación usuario
-    user_name = str(user_name)
-    #Obtener cantidad de items
-    user_items = items[items['user_id'] == user_name] #conexión de items de un usuario por su id
-    num_items = len(user_items['item_id'].unique())
-    #Obtención de dinero gastado
-    user_items_prices = user_items.merge(games, left_on='item_id', right_on='item_id', how='inner')
-    total_gastado = user_items_prices['price'].sum()
-    #Porcentaje de recomendación
-    user_reviews = reviews[reviews['user_id'] == user_name] #conexión de reviews de un usuario por su id
+    # Obtener cantidad de items y dinero gastado
+    num_items = user_items['item_id'].nunique()
+    total_gastado = user_items.merge(df_games, on='item_id', how='inner')['price'].sum()
+
+    # Calcular porcentaje de recomendación positiva
     total_reviews = len(user_reviews)
-    positive_reviews = user_reviews[user_reviews['recommend']==1]
-    num_positive_reviews = len(positive_reviews)
-    if total_reviews != 0:
-        porcentaje_positive_reviews = (num_positive_reviews / total_reviews) * 100
-    else:
-        porcentaje_positive_reviews = 0
+    num_positive_reviews = user_reviews['recommend'].sum()
+    porcentaje_positive_reviews = (num_positive_reviews / total_reviews * 100) if total_reviews > 0 else 0
+
     # Crear diccionario con la información
     user_data = {
         'Total gastado (USD)': total_gastado,
@@ -126,83 +107,88 @@ def UserForGenre(genero: str):
 
 @app.get("/best_developer_year/{year}")
 def best_developer_year(año: int):
-    games_df = df_games.copy()
-    reviews_df = df_review.copy()
-
-    games_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
-    reviews_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
     # Filtrar juegos por el año especificado
-    games_filtered = games_df[games_df['year'] == año]
-    # Merge juegos y reviews basado en 'id'
-    merged_df = pd.merge(games_filtered, reviews_df, left_on='item_id', right_on='item_id')
+    games_filtered = df_games[df_games['year'] == año]
+
+    # Merge juegos y reviews basado en 'id' solo para los juegos filtrados
+    merged_df = pd.merge(games_filtered, df_review, on='item_id', how='inner')
+
+    # Filtrar solo las recomendaciones
+    recommended_games = merged_df[merged_df['recommend'] == 1]
+
     # Contar recomendaciones por desarrollador
-    developer_counts = merged_df[merged_df['recommend'] == 1]['developer'].value_counts().reset_index()
+    developer_counts = recommended_games['developer'].value_counts().reset_index()
     developer_counts.columns = ['Developer', 'Recommendations']
-    # Ordenar por número de recomendaciones y obtener los 3 primeros
-    sorted_developers = developer_counts.sort_values(by='Recommendations', ascending=False)
-    top_developers = sorted_developers.head(3)
+
+    # Obtener los 3 desarrolladores principales
+    top_developers = developer_counts.head(3)
+
     # Formatear el resultado como una lista de diccionarios
     result = [{"Puesto {}: {}".format(i+1, row['Developer']): row['Recommendations']} for i, row in top_developers.iterrows()]
+
     return result
 
 
 @app.get("/developer_reviews_analysis/{desarrolladora}")
 def developer_reviews_analysis(desarrolladora: str):
-    games_df = df_games.copy()
-    reviews_df = df_review.copy()
+    # Filtrar juegos por la desarrolladora especificada
+    developer_filtered = df_games[df_games['developer'].str.strip().str.lower() == desarrolladora.lower()]
 
-    games_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
-    reviews_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
-    # Merge juegos y reviews basado en 'id'
-    merged_df = pd.merge(games_df, reviews_df, left_on='item_id', right_on='item_id')
-    # Filtrar por la desarrolladora especificada
-    developer_filtered = merged_df[merged_df['developer'].str.strip().str.lower() == desarrolladora.lower()]
+    # Merge juegos y reviews basado en 'id' solo para los juegos de la desarrolladora especificada
+    merged_df = pd.merge(developer_filtered, df_review, on='item_id', how='inner')
+
     # Contar registros de reseñas categorizadas como análisis positivo o negativo
-    positive_count = len(developer_filtered[developer_filtered['sentiment_analysis'] == 2])
-    negative_count = len(developer_filtered[developer_filtered['sentiment_analysis'] == 0])
+    positive_count = (merged_df['sentiment_analysis'] == 2).sum()
+    negative_count = (merged_df['sentiment_analysis'] == 0).sum()
+
     # Crear el diccionario de retorno
     result = {desarrolladora: {'Negative': negative_count, 'Positive': positive_count}}
+
     return result
 
 
 
 @app.get('/recomendacion_juego/{juego_id}')
 def recomendacion_juego(product_id: int):
+    # Obtener el índice del juego actual
+    juego_index = df_games[df_games['item_id'] == product_id].index
+
+    if len(juego_index) == 0:
+        return "El ID de juego especificado no existe en el conjunto de datos."
+
+    juego_index = juego_index[0]
+
+    # Configurar el modelo "Vecino más cercano"
     tfidf_vectorizer = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf_vectorizer.fit_transform(df_games['genres'])
-    
-    # Configurar el modelo "Vecino más cercano"
     nn = NearestNeighbors(metric='cosine', algorithm='brute')
     nn.fit(tfidf_matrix)
-    
-    # Obtener el índice del juego actual
-    juego_index = df_games[df_games['item_id'] == product_id].index[0]
-    
+
     # Encontrar los índices de los 5 juegos más similares
     distances, indices = nn.kneighbors(tfidf_matrix[juego_index], n_neighbors=6)
-    
+
     # Excluir el propio juego de los resultados
     similar_indices = indices.flatten()[1:]
-    
+
     # Obtener los nombres de los juegos similares
     juegos_similares = df_games.iloc[similar_indices]['name'].values
-    
+
     # Obtener el nombre del juego actual
     juego_actual = df_games.loc[df_games['item_id'] == product_id, 'name'].iloc[0]
-    
+
     # Crear el resultado en el formato especificado
     resultado = {
         "Juego actual": juego_actual,
         "Juegos recomendados similares": list(juegos_similares)
     }
-    
+
     return resultado
 
 #print(developer('valve'))
 
 #print(userdata('imsodonionringsrightnow'))
 
-#print(UserForGenre('Action'))
+#print(UserForGenre('Indie'))
 
 #print(best_developer_year(2015))
 
