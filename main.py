@@ -131,19 +131,20 @@ def best_developer_year(año: int):
 
 @app.get("/developer_reviews_analysis/{desarrolladora}")
 def developer_reviews_analysis(desarrolladora: str):
-    # Filtrar juegos por la desarrolladora especificada
-    developer_filtered = df_games[df_games['developer'].str.strip().str.lower() == desarrolladora.lower()]
+    games_df = df_games.copy()
+    reviews_df = df_review.copy()
 
-    # Merge juegos y reviews basado en 'id' solo para los juegos de la desarrolladora especificada
-    merged_df = pd.merge(developer_filtered, df_review, on='item_id', how='inner')
-
+    games_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
+    reviews_df.sort_values(by='item_id', ascending=False, inplace=True, ignore_index=True)
+    # Merge juegos y reviews basado en 'id'
+    merged_df = pd.merge(games_df, reviews_df, left_on='item_id', right_on='item_id')
+    # Filtrar por la desarrolladora especificada
+    developer_filtered = merged_df[merged_df['developer'].str.strip().str.lower() == desarrolladora.lower()]
     # Contar registros de reseñas categorizadas como análisis positivo o negativo
-    positive_count = (merged_df['sentiment_analysis'] == 2).sum()
-    negative_count = (merged_df['sentiment_analysis'] == 0).sum()
-
+    positive_count = len(developer_filtered[developer_filtered['sentiment_analysis'] == 2])
+    negative_count = len(developer_filtered[developer_filtered['sentiment_analysis'] == 0])
     # Crear el diccionario de retorno
     result = {desarrolladora: {'Negative': negative_count, 'Positive': positive_count}}
-
     return result
 
 
@@ -192,6 +193,6 @@ def recomendacion_juego(product_id: int):
 
 #print(best_developer_year(2015))
 
-#print(developer_reviews_analysis('valve'))
+print(developer_reviews_analysis('valve'))
 
 #print(recomendacion_juego(99910))
